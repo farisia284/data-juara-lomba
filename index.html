@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Data Juara Lomba</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.4 system-ui,sans-serif;background:#f3f5f4;color:#1c2b25}
+main{max-width:980px;margin:0 auto;padding:16px}
+h1{font-size:1.4rem;margin:0 0 12px}
+.card{background:#fff;border-radius:10px;padding:16px;margin-bottom:16px;box-shadow:0 1px 3px #0002}
+label{display:block;font-weight:600;font-size:.9rem;margin:10px 0 4px}
+input,select,button{font:inherit;padding:10px;border:1px solid #9aa8a1;border-radius:8px;width:100%;background:#fff}
+button{width:auto;cursor:pointer;background:#1f7a5a;color:#fff;border:0;font-weight:600}
+button:disabled{opacity:.6}
+button.sec{background:#e3e9e6;color:#1c2b25}
+button.del{background:#b3261e}
+button.sm{padding:6px 10px;font-size:.85rem}
+.up{text-transform:uppercase}
+.tabs{display:flex;gap:8px;margin-bottom:16px}
+.tabs button{flex:1}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;align-items:center}
+.bar select{width:auto;flex:1;min-width:200px}
+table{width:100%;border-collapse:collapse;font-size:.9rem}
+th,td{text-align:left;padding:8px 6px;border-bottom:1px solid #dde4e0;vertical-align:top}
+.tbl{overflow-x:auto}
+.err{color:#b3261e;font-weight:600}
+.ok{color:#1f7a5a;font-weight:600}
+small{color:#5b6b64}
+@media(max-width:600px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+  <div class="tabs">
+    <button id="tIsi">ISI DATA</button>
+    <button id="tAdmin" class="sec">ADMIN</button>
+  </div>
+
+  <section id="vIsi">
+    <h1>ISI DATA JUARA LOMBA</h1>
+    <form id="form" class="card">
+      <div class="grid">
+        <div><label for="nama">Nama peserta</label><input id="nama" class="up" autocapitalize="characters" pattern=".*\S.*" required></div>
+        <div><label for="tempat">Tempat lahir</label><input id="tempat" class="up" autocapitalize="characters" pattern=".*\S.*" required></div>
+        <div><label for="lahir">Tanggal lahir</label><input id="lahir" type="date" required></div>
+        <div><label for="kat">Kategori</label>
+          <select id="kat" required><option value="">- PILIH -</option><option value="Putra">PUTRA</option><option value="Putri">PUTRI</option></select></div>
+        <div><label for="sekolah">Asal sekolah</label><input id="sekolah" class="up" autocapitalize="characters" pattern=".*\S.*" required></div>
+        <div><label for="cabang">Cabang lomba</label><select id="cabang" required></select></div>
+        <div><label for="juara">Juara</label>
+          <select id="juara" required><option value="">- PILIH -</option><option value="1">JUARA 1</option><option value="2">JUARA 2</option><option value="3">JUARA 3</option></select></div>
+        <div><label for="file">Lampiran foto / PDF <small>(wajib, maks 5 MB)</small></label>
+          <input id="file" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" required></div>
+      </div>
+      <div class="bar"><button id="kirim" disabled>SIMPAN</button><span id="msg"><small>SEMUA KOLOM DAN LAMPIRAN WAJIB DIISI.</small></span></div>
+    </form>
+  </section>
+
+  <section id="vPin" hidden>
+    <h1>ADMIN</h1>
+    <form id="pinForm" class="card">
+      <label for="pin">PIN</label>
+      <input id="pin" type="password" inputmode="numeric" autocomplete="off" required>
+      <div class="bar"><button>MASUK</button><span id="perr" class="err"></span></div>
+    </form>
+  </section>
+
+  <section id="vAdmin" hidden>
+    <h1>ADMIN: DATA MASUK</h1>
+    <div class="card">
+      <div class="bar" style="margin:0 0 10px">
+        <select id="f"></select>
+        <button id="xls">UNDUH EXCEL (YANG TAMPIL)</button>
+        <button class="sec" id="kunci">KUNCI</button>
+      </div>
+      <p id="jml"></p>
+      <div class="tbl"><table>
+        <thead><tr><th>NAMA</th><th>TEMPAT, TANGGAL LAHIR</th><th>KATEGORI</th><th>SEKOLAH</th><th>CABANG LOMBA</th><th>JUARA</th><th>LAMPIRAN</th><th></th></tr></thead>
+        <tbody id="isi"></tbody>
+      </table></div>
+    </div>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+const CABANG=['Lomba Pengetahuan Mata Pelajaran PAI dan BTQ','Lomba Praktek Wudu dan Salat','Lomba Keterampilan Azan dan Iqomah','Lomba Seni Kaligrafi','Lomba Seni Khitobah'];
+const db=supabase.createClient('https://wobygfkxdvtipumkpgza.supabase.co','sb_publishable_j9zXCp-hN5mXb5SDTVaBdA_gP8BKST1');
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const U=s=>String(s).toUpperCase();
+const tgl=d=>new Date(d+'T00:00:00').toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'});
+const lahir=r=>U(`${r.tempat_lahir}, ${tgl(r.tanggal_lahir)}`);
+console.assert(lahir({tempat_lahir:'Pekalongan',tanggal_lahir:'2015-05-12'})==='PEKALONGAN, 12 MEI 2015','format tempat, tanggal salah');
+
+$('cabang').innerHTML='<option value="">- PILIH -</option>'+CABANG.map(c=>`<option value="${esc(c)}">${esc(U(c))}</option>`).join('');
+$('f').innerHTML='<option value="">SEMUA CABANG LOMBA</option>'+CABANG.map(c=>`<option value="${esc(c)}">${esc(U(c))}</option>`).join('');
+
+// menu
+function buka(v){
+  ['vIsi','vPin','vAdmin'].forEach(x=>$(x).hidden=x!==v);
+  $('tIsi').className=v==='vIsi'?'':'sec';
+  $('tAdmin').className=v==='vIsi'?'sec':'';
+}
+$('tIsi').onclick=()=>buka('vIsi');
+$('tAdmin').onclick=()=>buka(pin?'vAdmin':'vPin');
+
+// isi data (peserta): tombol SIMPAN aktif hanya jika semua kolom + lampiran terisi
+const siap=()=>$('kirim').disabled=!$('form').checkValidity();
+$('form').oninput=$('form').onchange=siap;
+
+$('form').onsubmit=async e=>{
+  e.preventDefault();
+  const b=$('kirim'),m=$('msg');
+  b.disabled=true;m.className='';m.textContent='MENYIMPAN...';
+  try{
+    const f=$('file').files[0];
+    if(!f)throw new Error('LAMPIRAN WAJIB DIISI.');
+    if(f.size>5*1024*1024)throw new Error('LAMPIRAN MAKSIMAL 5 MB.');
+    const ext=(f.name.split('.').pop()||'bin').toLowerCase().replace(/[^a-z0-9]/g,'');
+    const path=`${crypto.randomUUID()}.${ext}`;
+    const up=await db.storage.from('lampiran').upload(path,f,{contentType:f.type});
+    if(up.error)throw up.error;
+    const url=db.storage.from('lampiran').getPublicUrl(path).data.publicUrl;
+    const {error}=await db.from('juara_lomba').insert({
+      nama:U($('nama').value.trim()),tempat_lahir:U($('tempat').value.trim()),tanggal_lahir:$('lahir').value,
+      kategori:$('kat').value,asal_sekolah:U($('sekolah').value.trim()),cabang_lomba:$('cabang').value,
+      juara:+$('juara').value,lampiran_url:url});
+    if(error)throw error;
+    $('form').reset();m.className='ok';m.textContent='DATA BERHASIL DISIMPAN. TERIMA KASIH.';
+  }catch(err){m.className='err';m.textContent='GAGAL MENYIMPAN: '+U(err.message);}
+  finally{siap()}
+};
+
+// admin
+let pin='',rows=[];
+const lihat=()=>rows.filter(r=>!$('f').value||r.cabang_lomba===$('f').value);
+
+function tampil(){
+  const l=lihat();
+  $('jml').textContent=`${l.length} DATA`;
+  $('isi').innerHTML=l.map(r=>`<tr><td>${esc(U(r.nama))}</td><td>${esc(lahir(r))}</td><td>${esc(U(r.kategori))}</td><td>${esc(U(r.asal_sekolah))}</td><td>${esc(U(r.cabang_lomba))}</td><td>${r.juara}</td>
+    <td>${r.lampiran_url?`<a href="${esc(r.lampiran_url)}" target="_blank" rel="noopener">LIHAT</a>`:'-'}</td>
+    <td><button class="sm del" data-id="${r.id}">HAPUS</button></td></tr>`).join('');
+}
+
+async function muat(){
+  const {data,error}=await db.rpc('admin_list',{p:pin});
+  if(error)return error;
+  rows=data;tampil();
+}
+
+$('pinForm').onsubmit=async e=>{
+  e.preventDefault();$('perr').textContent='';
+  pin=$('pin').value;
+  const error=await muat();
+  if(error){pin='';$('perr').textContent=/PIN/.test(error.message)?'PIN SALAH.':'GAGAL: '+U(error.message);return}
+  $('pin').value='';buka('vAdmin');
+};
+
+$('kunci').onclick=()=>{pin='';rows=[];buka('vPin')};
+$('f').onchange=tampil;
+
+$('isi').onclick=async e=>{
+  const b=e.target.closest('button');if(!b)return;
+  const r=rows.find(x=>x.id===b.dataset.id);
+  if(!r||!confirm(`HAPUS DATA ${U(r.nama)}?`))return;
+  const {error}=await db.rpc('admin_hapus',{p:pin,i:r.id});
+  if(error)return alert('GAGAL MENGHAPUS: '+U(error.message));
+  muat();
+};
+
+$('xls').onclick=()=>{
+  const l=lihat();
+  if(!l.length)return alert('TIDAK ADA DATA.');
+  const ws=XLSX.utils.json_to_sheet(l.map((r,i)=>({
+    'NO':i+1,'NAMA':U(r.nama),'TEMPAT LAHIR':U(r.tempat_lahir),'TANGGAL LAHIR':U(tgl(r.tanggal_lahir)),
+    'TEMPAT, TANGGAL LAHIR':lahir(r),'KATEGORI':U(r.kategori),'ASAL SEKOLAH':U(r.asal_sekolah),
+    'CABANG LOMBA':U(r.cabang_lomba),'JUARA':r.juara,'LAMPIRAN':r.lampiran_url||''})));
+  ws['!cols']=[5,30,18,18,34,10,30,45,8,50].map(wch=>({wch}));
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'JUARA');
+  XLSX.writeFile(wb,`data-juara-lomba-${new Date().toISOString().slice(0,10)}.xlsx`);
+};
+</script>
+</body>
+</html>
