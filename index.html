@@ -42,6 +42,8 @@ small{color:#5b6b64}
   <section id="vIsi">
     <h1>ISI DATA JUARA LOMBA</h1>
     <form id="form" class="card">
+      <p id="stat" class="err">MEMERIKSA STATUS PENGISIAN...</p>
+      <fieldset id="fs" disabled style="border:0;padding:0;margin:0">
       <div class="grid">
         <div><label for="nama">Nama peserta</label><input id="nama" class="up" autocapitalize="characters" pattern=".*\S.*" required></div>
         <div><label for="tempat">Tempat lahir</label><input id="tempat" class="up" autocapitalize="characters" pattern=".*\S.*" required></div>
@@ -56,6 +58,7 @@ small{color:#5b6b64}
           <input id="file" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" required></div>
       </div>
       <div class="bar"><button id="kirim" disabled>SIMPAN</button><span id="msg"><small>SEMUA KOLOM DAN LAMPIRAN WAJIB DIISI.</small></span></div>
+      </fieldset>
     </form>
   </section>
 
@@ -71,10 +74,18 @@ small{color:#5b6b64}
   <section id="vAdmin" hidden>
     <h1>ADMIN: DATA MASUK</h1>
     <div class="card">
+      <b>KUNCI PENGISIAN</b>
+      <p id="stAdmin"></p>
+      <div class="bar" style="margin-top:0"><button id="kunciBtn">KUNCI SEKARANG</button></div>
+      <label for="batas">Batas waktu otomatis tutup (WIB)</label>
+      <input id="batas" type="datetime-local">
+      <div class="bar"><button id="batasSimpan">SIMPAN BATAS WAKTU</button><button class="sec" id="batasHapus">HAPUS BATAS WAKTU</button></div>
+    </div>
+    <div class="card">
       <div class="bar" style="margin:0 0 10px">
         <select id="f"></select>
         <button id="xls">UNDUH EXCEL (YANG TAMPIL)</button>
-        <button class="sec" id="kunci">KUNCI</button>
+        <button class="sec" id="keluar">KELUAR ADMIN</button>
       </div>
       <p id="jml"></p>
       <div class="tbl"><table>
@@ -96,6 +107,9 @@ const U=s=>String(s).toUpperCase();
 const tgl=d=>new Date(d+'T00:00:00').toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'});
 const lahir=r=>U(`${r.tempat_lahir}, ${tgl(r.tanggal_lahir)}`);
 console.assert(lahir({tempat_lahir:'Pekalongan',tanggal_lahir:'2015-05-12'})==='PEKALONGAN, 12 MEI 2015','format tempat, tanggal salah');
+const wib=iso=>{const o={timeZone:'Asia/Jakarta'},d=new Date(iso);
+  return U(d.toLocaleDateString('id-ID',{...o,day:'numeric',month:'long',year:'numeric'})+' PUKUL '+d.toLocaleTimeString('id-ID',{...o,hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).replace('.',':'))};
+console.assert(wib('2026-10-15T08:04:00Z')==='15 OKTOBER 2026 PUKUL 15:04','format waktu salah');
 
 $('cabang').innerHTML='<option value="">- PILIH -</option>'+CABANG.map(c=>`<option value="${esc(c)}">${esc(U(c))}</option>`).join('');
 $('f').innerHTML='<option value="">SEMUA CABANG LOMBA</option>'+CABANG.map(c=>`<option value="${esc(c)}">${esc(U(c))}</option>`).join('');
@@ -115,6 +129,7 @@ $('form').oninput=$('form').onchange=siap;
 
 $('form').onsubmit=async e=>{
   e.preventDefault();
+  if(!st||!st.terbuka)return cek();
   const b=$('kirim'),m=$('msg');
   b.disabled=true;m.className='';m.textContent='MENYIMPAN...';
   try{
@@ -133,7 +148,7 @@ $('form').onsubmit=async e=>{
     if(error)throw error;
     $('form').reset();m.className='ok';m.textContent='DATA BERHASIL DISIMPAN. TERIMA KASIH.';
   }catch(err){m.className='err';m.textContent='GAGAL MENYIMPAN: '+U(err.message);}
-  finally{siap()}
+  finally{siap();cek()}
 };
 
 // admin
@@ -159,10 +174,10 @@ $('pinForm').onsubmit=async e=>{
   pin=$('pin').value;
   const error=await muat();
   if(error){pin='';$('perr').textContent=/PIN/.test(error.message)?'PIN SALAH.':'GAGAL: '+U(error.message);return}
-  $('pin').value='';buka('vAdmin');
+  $('pin').value='';isiBatas();buka('vAdmin');
 };
 
-$('kunci').onclick=()=>{pin='';rows=[];buka('vPin')};
+$('keluar').onclick=()=>{pin='';rows=[];buka('vPin')};
 $('f').onchange=tampil;
 
 $('isi').onclick=async e=>{
@@ -186,6 +201,37 @@ $('xls').onclick=()=>{
   XLSX.utils.book_append_sheet(wb,ws,'JUARA');
   XLSX.writeFile(wb,`data-juara-lomba-${new Date().toISOString().slice(0,10)}.xlsx`);
 };
+// kunci pengisian: status dibaca dari server (jam server, bukan jam perangkat);
+// server juga menolak simpan saat terkunci, jadi ini hanya tampilan
+let st=null;
+async function cek(){
+  const {data,error}=await db.rpc('status_isi');
+  st=error?null:(data[0]||null);
+  const t=!!st&&st.terbuka,m=$('stat');
+  $('fs').disabled=!t;
+  m.className=t?'ok':'err';
+  m.textContent=!st?'GAGAL MEMERIKSA STATUS PENGISIAN.':t?(st.batas_waktu?`PENGISIAN DIBUKA SAMPAI ${wib(st.batas_waktu)} WIB.`:'PENGISIAN DIBUKA.'):st.dikunci?'PENGISIAN DIKUNCI OLEH ADMIN.':'WAKTU PENGISIAN SUDAH HABIS.';
+  panelKunci();siap();
+}
+function panelKunci(){
+  if(!st){$('stAdmin').textContent='STATUS TIDAK DIKETAHUI.';return}
+  $('stAdmin').textContent=`STATUS: ${st.terbuka?'DIBUKA':st.dikunci?'DIKUNCI MANUAL':'WAKTU HABIS'}. BATAS WAKTU: ${st.batas_waktu?wib(st.batas_waktu)+' WIB':'TIDAK ADA'}.`;
+  $('kunciBtn').textContent=st.dikunci?'BUKA KUNCI':'KUNCI SEKARANG';
+}
+const isiBatas=()=>$('batas').value=st&&st.batas_waktu?new Date(Date.parse(st.batas_waktu)+7*36e5).toISOString().slice(0,16):'';
+async function atur(kunci,batas){
+  const {error}=await db.rpc('admin_atur',{p:pin,kunci,batas});
+  if(error)return alert('GAGAL MENYIMPAN PENGATURAN: '+U(error.message));
+  await cek();isiBatas();
+}
+$('kunciBtn').onclick=()=>st&&atur(!st.dikunci,st.batas_waktu);
+$('batasSimpan').onclick=()=>{
+  if(!st)return;
+  if(!$('batas').value)return alert('ISI TANGGAL DAN JAM DULU.');
+  atur(st.dikunci,new Date($('batas').value.slice(0,16)+':00+07:00').toISOString());
+};
+$('batasHapus').onclick=()=>st&&atur(st.dikunci,null);
+cek();setInterval(cek,30000);
 </script>
 </body>
 </html>
